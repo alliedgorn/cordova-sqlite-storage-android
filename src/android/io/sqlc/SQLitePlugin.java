@@ -1,12 +1,10 @@
 /*
- * Copyright (c) 2012-2017: Christopher J. Brody (aka Chris Brody)
+ * Copyright (c) 2012-present Christopher J. Brody (aka Chris Brody)
  * Copyright (c) 2005-2010, Nitobi Software Inc.
  * Copyright (c) 2010, IBM Corporation
  */
 
 package io.sqlc;
-
-import android.annotation.SuppressLint;
 
 import android.util.Log;
 
@@ -30,7 +28,7 @@ import org.json.JSONObject;
 public class SQLitePlugin extends CordovaPlugin {
 
     /**
-     * Multiple database runner map (static).
+     * Concurrent database runner map.
      *
      * NOTE: no public static accessor to db (runner) map since it is not
      * expected to work properly with db threading.
@@ -44,7 +42,7 @@ public class SQLitePlugin extends CordovaPlugin {
      * THANKS to @NeoLSN (Jason Yang/楊朝傑) for giving the pointer in:
      * https://github.com/litehelpers/Cordova-sqlite-storage/issues/727
      */
-    static Map<String, DBRunner> dbrmap = new ConcurrentHashMap<String, DBRunner>();
+    private Map<String, DBRunner> dbrmap = new ConcurrentHashMap<String, DBRunner>();
 
     /**
      * NOTE: Using default constructor, no explicit constructor.
@@ -124,7 +122,7 @@ public class SQLitePlugin extends CordovaPlugin {
                 JSONArray txargs = allargs.getJSONArray("executes");
 
                 if (txargs.isNull(0)) {
-                    cbc.error("missing executes list");
+                    cbc.error("INTERNAL PLUGIN ERROR: missing executes list");
                 } else {
                     int len = txargs.length();
                     String[] queries = new String[len];
@@ -144,10 +142,10 @@ public class SQLitePlugin extends CordovaPlugin {
                             r.q.put(q);
                         } catch(Exception e) {
                             Log.e(SQLitePlugin.class.getSimpleName(), "couldn't add to queue", e);
-                            cbc.error("couldn't add to queue");
+                            cbc.error("INTERNAL PLUGIN ERROR: couldn't add to queue");
                         }
                     } else {
-                        cbc.error("database not open");
+                        cbc.error("INTERNAL PLUGIN ERROR: database not open");
                     }
                 }
                 break;
@@ -171,7 +169,7 @@ public class SQLitePlugin extends CordovaPlugin {
                 // stop the db runner thread:
                 r.q.put(new DBQuery());
             } catch(Exception e) {
-                Log.e(SQLitePlugin.class.getSimpleName(), "couldn't stop db thread", e);
+                Log.e(SQLitePlugin.class.getSimpleName(), "INTERNAL PLUGIN CLEANUP ERROR: could not stop db thread due to exception", e);
             }
             dbrmap.remove(dbname);
         }
@@ -182,16 +180,11 @@ public class SQLitePlugin extends CordovaPlugin {
     // --------------------------------------------------------------------------
 
     private void startDatabase(String dbname, JSONObject options, CallbackContext cbc) {
-        // TODO: is it an issue that we can orphan an existing thread?  What should we do here?
-        // If we re-use the existing DBRunner it might be in the process of closing...
         DBRunner r = dbrmap.get(dbname);
 
-        // Brody TODO: It may be better to terminate the existing db thread here & start a new one, instead.
         if (r != null) {
-            // don't orphan the existing thread; just re-open the existing database.
-            // In the worst case it might be in the process of closing, but even that's less serious
-            // than orphaning the old DBRunner.
-            cbc.success();
+            // NO LONGER EXPECTED due to BUG 666 workaround solution:
+            cbc.error("INTERNAL ERROR: database already open for db name: " + dbname);
         } else {
             r = new DBRunner(dbname, options, cbc);
             dbrmap.put(dbname, r);
@@ -376,7 +369,7 @@ public class SQLitePlugin extends CordovaPlugin {
                             Log.e(SQLitePlugin.class.getSimpleName(), "couldn't delete database", e);
                             dbq.cbc.error("couldn't delete database: " + e);
                         }
-                    }                    
+                    }
                 } catch (Exception e) {
                     Log.e(SQLitePlugin.class.getSimpleName(), "couldn't close database", e);
                     if (dbq.cbc != null) {
